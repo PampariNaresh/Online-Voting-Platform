@@ -2,7 +2,7 @@ const express = require("express");
 const app = express();
 const csrf = require("tiny-csrf");
 const cookieParser = require("cookie-parser");
-const { admin, Election, questions } = require("./models");
+const { admin, Election, questions, Options } = require("./models");
 const bodyParser = require("body-parser");
 const connectEnsureLogin = require("connect-ensure-login");
 const LocalStratergy = require("passport-local");
@@ -102,7 +102,6 @@ app.get("/", (request, response) => {
   }
 });
 
-// index page
 app.get(
   "/index",
   connectEnsureLogin.ensureLoggedIn(),
@@ -114,7 +113,6 @@ app.get(
   }
 );
 
-// signup page
 app.get("/signup", (request, response) => {
   try {
     response.render("signup", {
@@ -126,7 +124,6 @@ app.get("/signup", (request, response) => {
   }
 });
 
-//signout
 app.get("/signout", (request, response, next) => {
   request.logout((error) => {
     if (error) {
@@ -137,7 +134,6 @@ app.get("/signout", (request, response, next) => {
   });
 });
 
-//login
 app.get("/login", (request, response) => {
   if (request.user) {
     return response.redirect("/electionpage");
@@ -148,7 +144,6 @@ app.get("/login", (request, response) => {
   });
 });
 
-//post method for admin signup
 app.post("/admin", async (request, response) => {
   if (request.body.firstName.length == 0) {
     request.flash("error", "Firstname can not be empty!");
@@ -190,7 +185,6 @@ app.post("/admin", async (request, response) => {
   }
 });
 
-//homepage of admin
 app.get(
   "/electionpage",
   connectEnsureLogin.ensureLoggedIn(),
@@ -217,7 +211,6 @@ app.get(
   }
 );
 
-//election creation page
 app.get(
   "/electionpage/addelection",
   connectEnsureLogin.ensureLoggedIn(),
@@ -267,7 +260,6 @@ app.post(
   }
 );
 
-//election page
 app.get(
   "/electionpage/:id",
   connectEnsureLogin.ensureLoggedIn(),
@@ -275,10 +267,12 @@ app.get(
     console.log(req.params.id);
     try {
       const ele = await Election.findByPk(req.params.id);
+      const ques = await await questions.retriveQuestions(req.params.id);
       res.render("launch-end", {
         title: "Election Page",
         id: req.params.id,
         ele,
+        noOfQuestions: ques.length,
         csrfToken: req.csrfToken(),
       });
     } catch (err) {
@@ -288,24 +282,78 @@ app.get(
   }
 );
 
-//questions page
+app.get(
+  "/electionpage/:id/que/createque",
+  connectEnsureLogin.ensureLoggedIn(),
+  async (req, res) => {
+    res.render("create-question", {
+      title: "Create Question",
+      id: req.params.id,
+      csrfToken: req.csrfToken(),
+    });
+  }
+);
+
+app.post(
+  "/electionpage/:id/que/createque",
+  connectEnsureLogin.ensureLoggedIn(),
+  async (req, res) => {
+    if (req.body.questionname < 3) {
+      req.flash("error", "Question should contain 3 characters!");
+      return res.redirect(`/electionpage/${req.params.id}/que/createque`);
+    }
+    try {
+      const question = await questions.createQuestion({
+        electionId: req.params.id,
+        questionname: req.body.questionname,
+        description: req.body.description,
+      });
+      return res.redirect(`/electionpage/${req.params.id}/que/${question.id}`);
+    } catch (err) {
+      console.log(err);
+      return res.status(422).json(err);
+    }
+  }
+);
+
 app.get(
   "/electionpage/:id/que",
   connectEnsureLogin.ensureLoggedIn(),
   async (req, res) => {
+    const ques = await await questions.retriveQuestions(req.params.id);
+    const election = await Election.findByPk(req.params.id);
+    if (req.accepts("html")) {
+      res.render("questions-page", {
+        title: election.electionName,
+        id: req.params.id,
+        questions: ques,
+        election: election,
+        csrfToken: req.csrfToken(),
+      });
+    } else {
+      return res.json({
+        ques,
+      });
+    }
+  }
+);
+
+app.get(
+  "/electionpage/:id/que/:questionId",
+  connectEnsureLogin.ensureLoggedIn(),
+  async (req, res) => {
     try {
-      const ele = await Election.retriveElection(req.params.id);
-      const que = await questions.retriveQuestions(req.params.id);
+      const question = await questions.retriveQuestion(req.params.questionId);
+      const options = await Options.retriveOptions(req.params.questionId);
       if (req.accepts("html")) {
-        return res.render("questions-page", {
-          title: ele.electionName,
+        res.render("questionpage", {
+          title: question.questionname,
+          description: question.description,
           id: req.params.id,
-          que,
+          questionId: req.params.questionId,
+          electionId: req.params.electionName,
+          options,
           csrfToken: req.csrfToken(),
-        });
-      } else {
-        return res.json({
-          que,
         });
       }
     } catch (err) {
@@ -314,4 +362,148 @@ app.get(
     }
   }
 );
+
+app.post(
+  "/electionpage/:id/que/:questionId",
+  connectEnsureLogin.ensureLoggedIn(),
+  async (req, res) => {
+    if (!req.body.option) {
+      req.flash("error", "Option can not be empty");
+      return res.redirect(
+        `/electionpage/${req.params.id}/que/${req.params.questionId}`
+      );
+    }
+    try {
+      await Options.createOption({
+        option: req.body.option,
+        questionId: req.params.questionId,
+        electionId: req.params.electionId,
+        id: req.params.id,
+      });
+      return res.redirect(
+        `/electionpage/${req.params.id}/que/${req.params.questionId}`
+      );
+    } catch (err) {
+      console.log(err);
+      return res.status(422).json(err);
+    }
+  }
+);
+
+app.delete(
+  "/electionpage/:electionId/que/:questionId/opt/:optionId",
+  connectEnsureLogin.ensureLoggedIn(),
+  async (req, res) => {
+    try {
+      const result = Options.deleteOption(req.params.optionId);
+      return res.json({ success: result === 1 });
+    } catch (err) {
+      console.log(err);
+      return res.status(422).json(err);
+    }
+  }
+);
+
+app.get(
+  "/electionpage/:electionId/que/:questionId/opt/:optionId/edit",
+  connectEnsureLogin.ensureLoggedIn(),
+  async (req, res) => {
+    try {
+      const option = await Options.retriveOptions(req.params.optionId);
+      return res.render("edit-option", {
+        option: option.option,
+        csrfToken: req.csrfToken(),
+        electionId: req.params.electionId,
+        questionId: req.params.questionId,
+        optionId: req.params.optionId,
+      });
+    } catch (err) {
+      console.log(err);
+      return res.status(422).json(err);
+    }
+  }
+);
+
+app.put(
+  "/electionpage/:electionId/que/:questionId/opt/:optionId/edit",
+  connectEnsureLogin.ensureLoggedIn(),
+  async (req, res) => {
+    if (!req.body.option) {
+      req.flash("error", "Enter option");
+      return res.json({
+        error: "Enter option",
+      });
+    }
+    try {
+      const newOption = await Options.editOption({
+        option: req.body.option,
+        id: req.params.optionId,
+      });
+      return res.json(newOption);
+    } catch (err) {
+      console.log(err);
+      return res.status(422).json(err);
+    }
+  }
+);
+
+app.get(
+  "/electionpage/:electionId/que/:questionId/edit",
+  connectEnsureLogin.ensureLoggedIn(),
+  async (req, res) => {
+    try {
+      const question = await questions.retriveQuestion(req.params.questionId);
+      return res.render("edit-question", {
+        electionId: req.params.electionId,
+        questionId: req.params.questionId,
+        questionName: question.questionname,
+        description: question.description,
+        id: req.params.id,
+        csrfToken: req.csrfToken(),
+      });
+    } catch (err) {
+      console.log(err);
+      return res.status(422).json(err);
+    }
+  }
+);
+
+app.put(
+  "/electionpage/:electionId/que/:questionId/edit",
+  connectEnsureLogin.ensureLoggedIn(),
+  async (req, res) => {
+    if (req.body.question.length < 5) {
+      req.flash("error", "Question length should be atleast 5");
+      return res.json({
+        error: "Question length should be atleast 5",
+      });
+    }
+    try {
+      const newQuestion = await questions.editQuestion({
+        questionname: req.body.question,
+        description: req.body.description,
+        id: req.params.questionId,
+      });
+      return res.json(newQuestion);
+    } catch (error) {
+      console.log(error);
+      return res.status(422).json(error);
+    }
+  }
+);
+
+app.delete(
+  "/deletequestion/:id",
+  connectEnsureLogin.ensureLoggedIn(),
+  async (req, res) => {
+    try {
+      const result = await questions.removeQuestion(req.params.id);
+      return res.json({ success: result === 1 });
+    } catch (err) {
+      console.log(err);
+      return res.status(422).json(err);
+    }
+  }
+);
+
 module.exports = app;
