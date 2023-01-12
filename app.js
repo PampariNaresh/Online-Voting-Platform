@@ -2,7 +2,7 @@ const express = require("express");
 const app = express();
 const csrf = require("tiny-csrf");
 const cookieParser = require("cookie-parser");
-const { admin, Election, questions, Options } = require("./models");
+const { admin, Election, questions, Options, VoterRel } = require("./models");
 const bodyParser = require("body-parser");
 const connectEnsureLogin = require("connect-ensure-login");
 const LocalStratergy = require("passport-local");
@@ -233,22 +233,14 @@ app.post(
       );
       return response.redirect("/electionpage/addelection");
     }
-    if (request.body.publicurl.length < 3) {
+    if (request.body.publicurl.trim().length < 3) {
       request.flash("error", "URL should contain atleast 3 characters");
-      return response.redirect("/electionpage/addelection");
-    }
-    let spaceCheck =
-      request.body.publicurl.includes(" ") ||
-      request.body.publicurl.includes("\n") ||
-      request.body.publicurl.includes("\t");
-    if (spaceCheck == true) {
-      request.flash("error", "URL should not contain spaces");
       return response.redirect("/electionpage/addelection");
     }
     try {
       await Election.createElection({
         electionName: request.body.electionName,
-        publicurl: request.body.publicurl,
+        publicurl: request.body.publicurl.trim(),
         adminID: request.user.id,
       });
       return response.redirect("/electionpage");
@@ -502,6 +494,75 @@ app.delete(
     } catch (err) {
       console.log(err);
       return res.status(422).json(err);
+    }
+  }
+);
+
+app.get(
+  "/electionpage/:electionId/voters",
+  connectEnsureLogin.ensureLoggedIn(),
+  async (req, res) => {
+    try {
+      const election = await Election.retriveElection(req.params.electionId);
+      const voters = await VoterRel.retriveVoters(req.params.electionId);
+      if (req.accepts("html")) {
+        return res.render("voters-manage", {
+          title: election.electionName,
+          id: req.params.electionId,
+          csrfToken: req.csrfToken(),
+          voters,
+        });
+      } else {
+        return res.json({ voters });
+      }
+    } catch (err) {
+      console.log(err);
+      return res.status(422).json(err);
+    }
+  }
+);
+
+app.get(
+  "/electionpage/:electionId/voters/votercreate",
+  connectEnsureLogin.ensureLoggedIn(),
+  async (req, res) => {
+    try {
+      res.render("create-voter", {
+        title: "Add voter",
+        electionId: req.params.electionId,
+        csrfToken: req.csrfToken(),
+      });
+    } catch (err) {
+      console.log(err);
+      return res.status(422).json(err);
+    }
+  }
+);
+
+app.post(
+  "/electionpage/:electionId/voters/votercreate",
+  connectEnsureLogin.ensureLoggedIn(),
+  async (req, res) => {
+    if (req.body.password.length < 8) {
+      req.flash("error", "Password should contain atleast 8");
+      return res.redirect(
+        `/electionpage/${req.params.electionId}/voters/votercreate`
+      );
+    }
+    const hashedPwd = await bcrypt.hash(req.body.password, saltRounds);
+    try {
+      await VoterRel.addVoter({
+        voterid: req.body.voterid,
+        electionId: req.params.electionId,
+        password: hashedPwd,
+      });
+      return res.redirect(`/electionpage/${req.params.electionId}/voters`);
+    } catch (err) {
+      console.log(err);
+      req.flash("error", "Voter ID already in use, try another!");
+      return res.redirect(
+        `/electionpage/${req.params.electionId}/voters/votercreate`
+      );
     }
   }
 );
