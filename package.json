@@ -1,7 +1,7 @@
 {
-  "name": "online-voting-application",
+  "name": "online-voting-platform",
   "version": "1.0.0",
-  "description": "Online Voting Application",
+
   "main": "index.js",
   "scripts": {
     "start": "nodemon -e js,ejs",
@@ -18,14 +18,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Vineeth-07/Online_Voting_Application.git"
+    "url": "git+https://github.com/PampariNaresh/Online-Voting-Platform"
   },
-  "author": "Vineeth",
+
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/Vineeth-07/Online_Voting_Application/issues"
+    "url": "https://github.com/PampariNaresh/Online-Voting-Platform/issues"
   },
-  "homepage": "https://github.com/Vineeth-07/Online_Voting_Application#readme",
+  "homepage": "https://github.com/PampariNaresh/Online-Voting-Platform#readme",
   "devDependencies": {
     "cheerio": "^1.0.0-rc.12",
     "eslint": "^8.30.0",
