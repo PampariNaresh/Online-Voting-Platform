@@ -1,3 +1,3 @@
-# Online Voting Application
+# Online Voting Platform
 
 
